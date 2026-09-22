@@ -42,10 +42,11 @@ class ShareService:Service() {
  override fun onStartCommand(intent:Intent?,flags:Int,startId:Int):Int {
   if(intent?.action=="stop") {stopSelf();return START_NOT_STICKY}
   if(server!=null) return START_STICKY
+        WebSession.reset()
   try {
    ServiceCompat.startForeground(this,8080,notification(),if(Build.VERSION.SDK_INT>=29) ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC else 0)
    server=LocalServer(applicationContext,8080).also { it.start() }
-   SharingState.running.value=true;SharingState.message.value="سرور فعال است"
+   SharingState.running.value=true;SharingState.message.value="سرور فعال است؛ اتصال مرورگر را با دکمه آزمایش بررسی کنید"
   } catch(e:Exception) {
    SharingState.running.value=false;SharingState.message.value="خطای سرور: " + (e.localizedMessage ?: "پورت اشغال است")
    stopSelf()
