@@ -1,10 +1,30 @@
-# پل فایل (PolFile)
+# پل فایل — PolFile
 
-Kotlin + Jetpack Compose app for local bidirectional file transfer. Choose files or a folder on the phone, start a foreground HTTP server on port 8080, open its address in a Windows browser to download selected files or upload files to the phone.
+برنامه اندروید Kotlin / Jetpack Compose برای انتقال فایل به شکل دوطرفه در شبکه محلی از طریق مرورگر کامپیوتر، با پورت 8080.
 
-**Security:** No login or encryption. Start sharing only on a trusted LAN. Stop after transfer.
+## Android → Windows (دریافت در کامپیوتر)
+1. گوشی و کامپیوتر را به Wi-Fi یا هات‌اسپات مشترک متصل کنید.
+2. در برنامه گوشی گزینه **افزودن فایل گوشی** یا **افزودن پوشه گوشی** را بزنید.
+3. **شروع اشتراک‌گذاری** را بزنید و از بخش آدرس، IP و کد اتصال را ببینید.
+4. در مرورگر کامپیوتر `http://PHONE_IP:8080` را وارد کنید (حتماً HTTP، نه HTTPS).
+5. در صفحه ورود، کد ۱۲رقمی نمایش‌داده‌شده در گوشی را وارد کنید، یا آدرس کامل حاوی کد را وارد کنید.
+6. در تب **دریافت از گوشی** روی دکمه دریافت کنار فایل موردنظر کلیک کنید.
 
-## Build APK
-Open [Actions](https://github.com/ahbe0911-cmd/PolFile/actions), select `Build Android APK`, run workflow, wait for green success, then download `PolFile-debug-apk` under Artifacts. Extract `app-debug.apk` and install it on your Android device.
+## Windows → Android (ارسال به گوشی)
+در تب **ارسال به گوشی**، فایل‌های کامپیوتر را انتخاب کنید. برنامه روی Android 10+ آن‌ها را در `Download/PolFile` ذخیره می‌کند؛ در Android 8–9 آن‌ها را در پوشه دانلود اختصاصی برنامه نگه می‌دارد. سقف هر فایل در این نسخه ۲ گیگابایت است.
 
-The interactive coral styling follows the supplied design reference. The supplied A-Rooznameh font is included in the downloadable ZIP supplied in the conversation; this repository build currently uses the Android default font pending a binary font resource upload. Android runtime testing has not yet been performed.
+## اتصال باز نمی‌شود؟
+- روی گوشی **آزمایش اتصال سرور** را بزنید. این دکمه سرور را روی loopback و روی IP نمایش‌داده‌شده امتحان می‌کند.
+- با مرورگر کامپیوتر فقط آدرس `http://...` را وارد کنید؛ اگر مرورگر خودکار HTTPS را تحمیل کرد، آن را غیرفعال کنید.
+- برای اتصال واقعی، باید هر دو دستگاه در یک شبکه باشند؛ روترهای مهمان/عمومی ممکن است دسترسی بین دستگاه‌ها را به دلیل AP/Client Isolation مسدود کنند.
+- VPN را موقتاً قطع کنید، روی شبکه شخصی امتحان کنید، یا هات‌اسپات گوشی را روشن و کامپیوتر را به آن متصل کنید.
+- در نوار برنامه تعداد فایل‌های اشتراک‌گذاری‌شده را بررسی کنید. اگر صفر است، هیچ فایلی برای دریافت در کامپیوتر وجود ندارد.
+
+## امنیت و محدودیت‌ها
+این نرم‌افزار از HTTP بدون TLS روی شبکه محلی استفاده می‌کند. هر بار با شروع سرور، کد تصادفی جدید ایجاد می‌شود؛ اشتراک‌گذاری را فقط در شبکه قابل اعتماد روشن نگه دارید و پس از پایان متوقف کنید. این کد جایگزین رمزنگاری نیست. Android 15 به بعد برای سرویس foreground از نوع dataSync محدودیت زمانی دارد. محدودیت‌های نسخه اولیه شامل عدم رمزنگاری، سقف ۲GB برای هر فایل دریافتی روی گوشی، و نیاز به آزمایش واقعی روی مدل گوشی شما هستند.
+
+## Build
+در [GitHub Actions](https://github.com/ahbe0911-cmd/PolFile/actions)، workflow **Build Android APK** را اجرا کنید. بعد از موفقیت، artifact با نام `PolFile-debug-apk` را دریافت و فایل `app-debug.apk` را از آن استخراج و نصب کنید. این خروجی debug است، نه نسخه منتشرشده در فروشگاه. تست ساخت اندروید در CI انجام می‌شود؛ آزمایش مرورگر ویندوز در شبکه و روی گوشی واقعی باید جداگانه انجام شود.
+
+## طراحی
+رابط گرافیکی با رنگ‌های مرجانی با الهام از تصویر مرجع ساخته شده است. فونت اختصاصی A-Rooznameh ارسال‌شده توسط کاربر **هنوز داخل APK فعلی نیست** و مرحله بعدی گرافیک باید روی اندروید واقعی بررسی و تکمیل شود.
