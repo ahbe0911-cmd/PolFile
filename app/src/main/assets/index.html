@@ -1,1 +1,45 @@
-<!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>پل فایل</title><style>*{box-sizing:border-box}body{margin:0;background:#fff3f2;color:#202940;font:16px Tahoma,Arial}header{padding:38px 18px;text-align:center;background:linear-gradient(130deg,#ffaaa0,#fd696e);color:white}h1{font-size:35px;margin:0}main{max-width:800px;margin:auto;padding:12px}section{background:white;border-radius:22px;padding:22px;margin:18px 0;box-shadow:0 5px 20px #b95d5d15}li{display:flex;align-items:center;justify-content:space-between;gap:12px;list-style:none;padding:12px 0;border-bottom:1px solid #eee;overflow-wrap:anywhere}ul{padding:0}a,button{background:#ef6971;color:white;border:0;border-radius:12px;padding:10px 18px;text-decoration:none;cursor:pointer}small{display:block;color:#888}input{max-width:100%}</style></head><body><header><h1>پل فایل</h1><p>انتقال دوطرفه فایل در شبکه محلی</p></header><main><section><h2>فایل‌های گوشی</h2><ul>ROWS</ul></section><section><h2>ارسال فایل به گوشی</h2><input id="f" type="file" multiple><p><button id="send">ارسال فایل</button></p><p id="msg"></p></section></main><script>document.getElementById('send').onclick=async()=>{const files=document.getElementById('f').files;const msg=document.getElementById('msg');if(!files.length){msg.textContent='فایل انتخاب کنید';return;}for(const file of files){msg.textContent='در حال ارسال: '+file.name;try{const r=await fetch('/upload?name='+encodeURIComponent(file.name),{method:'POST',headers:{'Content-Type':'application/octet-stream'},body:file});if(!r.ok)throw Error(await r.text());msg.textContent='ارسال شد: '+file.name;}catch(e){msg.textContent='خطا: '+e.message;return;}}};</script></body></html>
+<!doctype html>
+<html lang="fa" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>پل فایل | انتقال دوطرفه</title>
+<style>
+:root{--coral:#f56c72;--ink:#243149;--muted:#7a869b;--bg:#fff5f4;--line:#f5dfe0}
+*{box-sizing:border-box}body{font-family:Tahoma,Arial,sans-serif;background:var(--bg);margin:0;color:var(--ink)}
+header{background:linear-gradient(123deg,#ffaaa0,#ff7074);color:#fff;padding:30px 18px 75px;position:relative;overflow:hidden}
+header:after{content:"";position:absolute;width:240px;height:240px;border-radius:50%;background:#ffffff22;top:-125px;left:-40px}
+.top{max-width:1000px;margin:auto;position:relative;z-index:2;display:flex;align-items:center;justify-content:space-between;gap:14px}
+h1{font-size:36px;margin:0 0 8px}.top p{margin:0;font-size:13px;opacity:.95}.pill{background:#ffffff40;border:1px solid #ffffff70;border-radius:30px;padding:9px 13px;white-space:nowrap}
+main{max-width:1000px;margin:-40px auto 40px;position:relative;padding:0 16px}
+.card{background:white;box-shadow:0 10px 32px #db7c7c18;border:1px solid #ffffff;border-radius:22px;padding:22px;margin-bottom:18px}
+h2{font-size:21px;margin:0 0 7px}.hint{color:var(--muted);font-size:12px;line-height:1.9;margin:0 0 16px}
+.tabs{display:flex;gap:10px;margin-bottom:19px}.tabs button{flex:1;background:#fff3f2;border:1px solid var(--line);color:var(--ink)}
+.tabs button.active{background:var(--coral);color:white;border-color:var(--coral)}
+button,.btn{font-family:inherit;border:0;background:var(--coral);color:white;padding:13px 17px;border-radius:13px;cursor:pointer;display:inline-block;text-decoration:none;font-size:14px}
+button:disabled{opacity:.45;cursor:default}.box{border:2px dashed #f6b1b1;border-radius:18px;padding:28px 14px;text-align:center;background:#fffbfa}
+input[type=file]{max-width:100%;margin:12px auto}.row{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:12px 0;border-bottom:1px solid #f5eded}
+.row:last-child{border:0}.name{overflow-wrap:anywhere;max-width:76%;font-size:14px}.small{color:var(--muted);font-size:11px;margin-top:4px}
+.list{max-height:520px;overflow:auto}.primary{font-weight:bold}.search{width:100%;border-radius:12px;border:1px solid #ecdcdc;padding:13px;font:inherit;margin:0 0 13px}
+.hide{display:none}.status{background:#effbf7;color:#146c57;border-radius:12px;padding:12px;font-size:12px;line-height:2;white-space:pre-wrap;margin-top:14px}
+.actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:12px}
+.progress{height:8px;border-radius:6px;background:#fae5e5;overflow:hidden;display:none;margin-top:16px}
+.progress>div{height:100%;width:0;background:#f56c72;transition:width .15s}
+footer{text-align:center;color:#9c8490;font-size:11px;padding-bottom:20px}
+@media(max-width:570px){header{padding-bottom:70px}.top{display:block}.pill{display:inline-block;margin-top:12px}.card{padding:17px}.row{align-items:flex-start}.btn{font-size:12px}}
+</style></head>
+<body><header><div class="top"><div><h1>پل فایل</h1><p>گوشی و کامپیوتر، کنار هم · بدون کابل</p></div><div class="pill">● اتصال محلی برقرار است</div></div></header>
+<main>
+<div class="card"><h2>مدیریت انتقال فایل</h2><p class="hint">از این صفحه هم فایل‌های انتخاب‌شده گوشی را دریافت کنید، هم فایل‌های کامپیوتر را به گوشی بفرستید.</p>
+<div class="tabs"><button class="active" id="receiveTab" onclick="tab('receive')">↓ دریافت از گوشی</button><button id="sendTab" onclick="tab('send')">↑ ارسال به گوشی</button></div>
+<div id="receive"><input id="search" class="search" oninput="filterRows()" placeholder="جستجو در فایل‌های گوشی"><div id="list" class="list">ROWS</div><p id="empty" class="hint hide">فایلی پیدا نشد. در برنامه گوشی گزینه «افزودن فایل» یا «افزودن پوشه» را بزنید، سپس این صفحه را تازه‌سازی کنید.</p>
+<div class="actions"><button onclick="location.reload()">↻ به‌روزرسانی فهرست</button><span class="small">فایل‌ها فقط وقتی از گوشی انتخاب شوند در این بخش دیده می‌شوند.</span></div></div>
+<div id="send" class="hide"><div class="box"><div style="font-size:35px">⇧</div><div class="primary">ارسال فایل از کامپیوتر به گوشی</div><p class="hint">فایل‌ها در پوشه Download/PolFile گوشی ذخیره می‌شوند.</p><input id="files" type="file" multiple><div class="actions" style="justify-content:center"><button id="upload" onclick="sendFiles()">ارسال فایل‌های انتخاب‌شده</button><button id="cancel" onclick="abortUpload()" disabled style="background:#8891a1">لغو ارسال</button></div></div>
+<div class="progress" id="progress"><div id="bar"></div></div><div id="status" class="status">هنوز فایلی برای ارسال انتخاب نشده است.</div></div></div>
+<div class="card"><h2>راهنمای اتصال</h2><p class="hint">هر دو دستگاه باید به یک Wi-Fi یا هات‌اسپات مشترک متصل باشند. در صورت استفاده از وای‌فای عمومی، محدودیت «AP isolation» ممکن است اتصال دستگاه‌ها را مسدود کند. پس از پایان انتقال، اشتراک‌گذاری را از گوشی متوقف کنید.</p></div>
+</main><footer>پل فایل · ارتباط محلی بدون فضای ابری</footer>
+<script>
+var token=TOKEN_JSON;var active=null;var canceled=false;
+function tab(t){document.getElementById('receive').className=t==='receive'?'':'hide';document.getElementById('send').className=t==='send'?'':'hide';document.getElementById('receiveTab').className=t==='receive'?'active':'';document.getElementById('sendTab').className=t==='send'?'active':'';}
+function filterRows(){var value=document.getElementById('search').value.toLowerCase();var rows=document.querySelectorAll('#list .row');var visible=0;for(var i=0;i<rows.length;i++){var ok=rows[i].getAttribute('data-name').toLowerCase().indexOf(value)!==-1;rows[i].style.display=ok?'flex':'none';if(ok)visible++;}document.getElementById('empty').className=visible?'hint hide':'hint';}
+function abortUpload(){canceled=true;if(active)active.abort();document.getElementById('status').textContent='ارسال لغو شد.';}
+function sendFiles(){var files=document.getElementById('files').files;var status=document.getElementById('status');if(!files.length){status.textContent='ابتدا فایل را انتخاب کنید.';return;}canceled=false;document.getElementById('upload').disabled=true;document.getElementById('cancel').disabled=false;document.getElementById('progress').style.display='block';var pos=0;function next(){if(canceled){end();return;}if(pos>=files.length){status.textContent='همه '+files.length+' فایل ارسال شدند. فهرست دانلود را تازه‌سازی کنید.';end();return;}var file=files[pos];if(file.size>2147483647){status.textContent='حجم فایل بیشتر از ۲ گیگابایت است: '+file.name;end();return;}var xhr=new XMLHttpRequest();active=xhr;xhr.open('POST','/upload?key='+encodeURIComponent(token)+'&name='+encodeURIComponent(file.name),true);xhr.setRequestHeader('Content-Type','application/octet-stream');xhr.upload.onprogress=function(e){if(e.lengthComputable){document.getElementById('bar').style.width=Math.round(e.loaded/e.total*100)+'%';status.textContent='در حال ارسال ('+(pos+1)+'/'+files.length+'): '+file.name+' ـ '+Math.round(e.loaded/e.total*100)+'٪';}};xhr.onload=function(){if(xhr.status===201){pos++;document.getElementById('bar').style.width='0%';next();}else{status.textContent='خطای ارسال '+file.name+': '+xhr.status+' '+xhr.responseText;end();}};xhr.onerror=function(){status.textContent='ارتباط قطع شد. اتصال Wi-Fi را بررسی کنید.';end();};xhr.onabort=function(){end();};xhr.send(file);}function end(){active=null;document.getElementById('upload').disabled=false;document.getElementById('cancel').disabled=true;}next();}
+filterRows();
+</script></body></html>
