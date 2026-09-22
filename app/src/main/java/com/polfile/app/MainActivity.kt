@@ -6,6 +6,10 @@ import android.content.pm.PackageManager
 import android.os.*
 import android.view.WindowManager
 import android.widget.Toast
+import android.net.Uri
+import java.net.HttpURLConnection
+import java.net.URL
+import kotlin.concurrent.thread
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -31,7 +35,7 @@ import androidx.compose.ui.unit.*
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.delay
 
-private val coral=Color(0xFFFF7776)
+private val coral=Color(0xFFF96E73)
 private val ink=Color(0xFF1B2B43)
 private val soft=Color(0xFFFFF3F2)
 private val gray=Color(0xFF728094)
@@ -87,8 +91,12 @@ private fun Screen(keepOn:Boolean,onKeepOn:(Boolean)->Unit,chooseFiles:()->Unit,
  val state by SharingState.message.collectAsState()
  val version by FileStore.revision.collectAsState()
  var ip by remember {mutableStateOf(SharingState.ip(context))}
- LaunchedEffect(Unit) { while(true) {ip=SharingState.ip(context);delay(3000)} }
- val address=if(ip==null) "IP شبکه یافت نشد" else "http://"+ip+":8080"
+ var checkResult by remember {mutableStateOf("")}
+ val client by WebSession.client.collectAsState()
+ val events by WebSession.events.collectAsState()
+ LaunchedEffect(Unit) { while(true) {ip=SharingState.ip(context);delay(2500)} }
+ val address=if(ip==null) "" else "http://"+ip+":8080/?key="+WebSession.key
+ val fileCount=remember(version) { FileStore.list(context).size }
  Column(Modifier.fillMaxSize().background(Color(0xFFFFF7F5))) {
   Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
    Header()
@@ -97,18 +105,38 @@ private fun Screen(keepOn:Boolean,onKeepOn:(Boolean)->Unit,chooseFiles:()->Unit,
      0 -> {
       WhiteCard {
        Text("اتصال به ویندوز",color=ink,fontWeight=FontWeight.Bold,fontSize=21.sp)
-       Text("آدرس اتصال در شبکه محلی",color=gray,fontSize=12.sp)
+       Text("ابتدا سرور را روشن کنید؛ آدرس کامل زیر را در مرورگر ویندوز وارد کنید.",color=gray,fontSize=12.sp)
+       if(active) Text("✓ سرور روی پورت 8080 در حال اجراست",color=Color(0xFF168B73),fontSize=13.sp,fontWeight=FontWeight.Bold)
+       Text("فایل‌های آماده دریافت: "+fileCount,color=gray,fontSize=12.sp)
        Spacer(Modifier.height(8.dp))
        Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(soft)
         .clickable { copy(context,address,active && ip!=null) }.padding(12.dp),
         verticalAlignment=Alignment.CenterVertically) {
-        Text(address,Modifier.weight(1f),textAlign=TextAlign.Center,color=Color(0xFFD54D55),fontSize=17.sp)
+        Text(if(!active) "برای نمایش آدرس، شروع اشتراک‌گذاری را بزنید" else if(ip==null) "Wi-Fi یا هات‌اسپات را روشن کنید" else address,Modifier.weight(1f),textAlign=TextAlign.Center,color=Color(0xFFD54D55),fontSize=13.sp,lineHeight=19.sp,softWrap=true)
         Icon(Icons.Default.ContentCopy,"کپی",tint=coral)
        }
        Spacer(Modifier.height(8.dp))
        Text(if(active) "● سرویس فعال" else "● سرویس غیرفعال",color=if(active) Color(0xFF158C75) else gray)
        Text(state,color=gray,fontSize=12.sp)
-       Text("پورت: 8080  •  گوشی و ویندوز باید به یک شبکه متصل باشند.",color=gray,fontSize=11.sp)
+       if(active) Text("کد این جلسه: "+WebSession.key+"  •  دستگاه متصل: "+client,color=gray,fontSize=12.sp)
+       Text("آدرس باید با http:// شروع شود؛ با https:// کار نمی‌کند.",color=gray,fontSize=11.sp)
+       if(active && ip!=null) {
+        OutlinedButton(onClick={
+         checkResult="در حال آزمایش سرور از روی گوشی..."
+         thread {
+          val outcome=try {
+           val connection=URL("http://127.0.0.1:8080/ping?key="+WebSession.key).openConnection() as HttpURLConnection
+           connection.connectTimeout=4000;connection.readTimeout=4000
+           val ok=connection.inputStream.bufferedReader().use {it.readText()}=="OK"
+           connection.disconnect()
+           if(ok) "✓ سرور روی گوشی پاسخ می‌دهد. اگر ویندوز وصل نمی‌شود، اتصال هر دو دستگاه، VPN، دیوار آتش و ایزوله بودن Wi-Fi را بررسی کنید."
+           else "سرور پاسخ نامعتبر داد."
+          }catch(e:Exception){"✕ اتصال محلی برقرار نشد: "+(e.localizedMessage ?: "خطای ناشناخته")}
+          (context as? android.app.Activity)?.runOnUiThread { checkResult=outcome }
+         }
+        },modifier=Modifier.fillMaxWidth()) {Icon(Icons.Default.WifiFind,null);Spacer(Modifier.width(6.dp));Text("آزمایش اتصال سرور")}
+        if(checkResult.isNotEmpty()) Text(checkResult,color=if(checkResult.startsWith("✓")) Color(0xFF17866F) else gray,fontSize=12.sp,lineHeight=20.sp)
+       }
       }
       Row(horizontalArrangement=Arrangement.spacedBy(10.dp)) {
        Button(onClick={toggle(active)},modifier=Modifier.weight(1.15f).height(62.dp),shape=RoundedCornerShape(17.dp),
@@ -135,7 +163,12 @@ private fun Screen(keepOn:Boolean,onKeepOn:(Boolean)->Unit,chooseFiles:()->Unit,
       OutlinedButton(onClick=chooseFolder,modifier=Modifier.fillMaxWidth(),shape=RoundedCornerShape(16.dp)) {
        Icon(Icons.Default.CreateNewFolder,null);Spacer(Modifier.width(6.dp));Text("افزودن پوشه گوشی")
       }
-      Text("اشتراک‌گذاری HTTP بدون رمز عبور است؛ فقط در شبکه خصوصی مورداعتماد استفاده کنید.",color=gray,fontSize=11.sp,textAlign=TextAlign.Center)
+      WhiteCard {
+       Text("چطور ارسال و دریافت کنم؟",fontWeight=FontWeight.Bold,color=ink,fontSize=16.sp)
+       Text("↓ دریافت: در کامپیوتر، تب «دریافت از گوشی» را باز کنید؛ فقط فایل‌هایی که اینجا انتخاب کرده‌اید نمایش داده می‌شوند.",color=gray,fontSize=12.sp,lineHeight=20.sp)
+       Text("↑ ارسال: در کامپیوتر، تب «ارسال به گوشی» را بزنید. فایل‌های دریافتی در Download/PolFile گوشی ذخیره می‌شوند.",color=gray,fontSize=12.sp,lineHeight=20.sp)
+      }
+      Text("کد اتصال هر بار عوض می‌شود. انتقال HTTP رمزنگاری ندارد؛ فقط در شبکه خصوصی و مورداعتماد استفاده کنید.",color=gray,fontSize=11.sp,textAlign=TextAlign.Center)
      }
      1 -> {
       WhiteCard {
@@ -167,12 +200,15 @@ private fun Screen(keepOn:Boolean,onKeepOn:(Boolean)->Unit,chooseFiles:()->Unit,
       Text("پیام‌ها",fontWeight=FontWeight.Bold,fontSize=22.sp,color=ink)
       Text(state,color=gray)
       Text("اتصال: "+address,color=gray)
-      Text("برای مشاهده فایل‌ها در ویندوز، همین آدرس را در مرورگر وارد کنید.",color=ink)
+      Text("آخرین دستگاه: "+client,color=ink)
+      if(events.isEmpty()) Text("هنوز انتقالی ثبت نشده است.",color=gray)
+      events.forEach { Text(it,color=ink,fontSize=12.sp) }
      }
      else -> WhiteCard {
       Text("راهنمای پل فایل",fontWeight=FontWeight.Bold,fontSize=22.sp,color=ink)
       Text("۱. گوشی و ویندوز را به یک Wi-Fi مشترک وصل کنید.\n۲. فایل یا پوشه انتخاب کنید.\n۳. روی شروع اشتراک‌گذاری بزنید.\n۴. آدرس IP نمایش‌داده‌شده را در مرورگر ویندوز وارد کنید.\n۵. فایل‌ها را دانلود کنید یا از صفحه مرورگر برای گوشی فایل بفرستید.\n۶. پس از پایان، اشتراک‌گذاری را متوقف کنید.",color=ink,lineHeight=26.sp)
-      Text("این سرویس رمز عبور یا TLS ندارد؛ روی شبکه عمومی استفاده نکنید.",color=gray,fontSize=12.sp)
+      Text("اگر صفحه در ویندوز باز نشد: ابتدا دکمه آزمایش اتصال سرور را در صفحه خانه بزنید. حالت VPN، دیتای گوشی و Client Isolation روتر را بررسی کنید. از آدرس کامل با کد استفاده کنید و http:// را جایگزین https:// نکنید.",color=gray,fontSize=12.sp,lineHeight=20.sp)
+      Text("انتقال HTTP رمزنگاری نشده است؛ کد اتصال را به افراد ناشناس ندهید.",color=gray,fontSize=12.sp)
      }
     }
    }
