@@ -124,14 +124,16 @@ private fun Screen(keepOn:Boolean,onKeepOn:(Boolean)->Unit,chooseFiles:()->Unit,
         OutlinedButton(onClick={
          checkResult="در حال آزمایش سرور از روی گوشی..."
          thread {
+          fun probe(host:String):Boolean {
+           val connection=URL("http://"+host+":8080/ping?key="+WebSession.key).openConnection() as HttpURLConnection
+           connection.connectTimeout=3500;connection.readTimeout=3500
+           return try {connection.inputStream.bufferedReader().use {it.readText()}=="OK"} finally {connection.disconnect()}
+          }
           val outcome=try {
-           val connection=URL("http://127.0.0.1:8080/ping?key="+WebSession.key).openConnection() as HttpURLConnection
-           connection.connectTimeout=4000;connection.readTimeout=4000
-           val ok=connection.inputStream.bufferedReader().use {it.readText()}=="OK"
-           connection.disconnect()
-           if(ok) "✓ سرور روی گوشی پاسخ می‌دهد. اگر ویندوز وصل نمی‌شود، اتصال هر دو دستگاه، VPN، دیوار آتش و ایزوله بودن Wi-Fi را بررسی کنید."
-           else "سرور پاسخ نامعتبر داد."
-          }catch(e:Exception){"✕ اتصال محلی برقرار نشد: "+(e.localizedMessage ?: "خطای ناشناخته")}
+           if(!probe("127.0.0.1")) "✕ خود سرور گوشی به درخواست پاسخ نداد."
+           else if(!probe(ip!!)) "✕ سرور داخلی فعال است، ولی IP نمایش‌داده‌شده به سرور وصل نمی‌شود. Wi-Fi یا هات‌اسپات را عوض کنید و مجدداً تلاش کنید."
+           else "✓ سرور با IP نمایش‌داده‌شده روی گوشی پاسخ می‌دهد. اگر ویندوز وصل نمی‌شود، هر دو دستگاه را به یک شبکه وصل کنید؛ VPN، فایروال و جداسازی دستگاه‌ها (AP Isolation) را بررسی کنید."
+          }catch(e:Exception){"✕ آزمایش اتصال ناموفق: "+(e.localizedMessage ?: "خطای ناشناخته")}
           (context as? android.app.Activity)?.runOnUiThread { checkResult=outcome }
          }
         },modifier=Modifier.fillMaxWidth()) {Icon(Icons.Default.WifiFind,null);Spacer(Modifier.width(6.dp));Text("آزمایش اتصال سرور")}
