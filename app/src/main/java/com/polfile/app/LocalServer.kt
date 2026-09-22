@@ -6,116 +6,150 @@ import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
+import kotlinx.coroutines.flow.MutableStateFlow
 import java.io.*
 import java.net.*
 import java.nio.charset.StandardCharsets
+import java.security.MessageDigest
+import java.security.SecureRandom
 import java.util.concurrent.Executors
 
+object WebSession {
+ @Volatile var key = randomKey()
+ val client=MutableStateFlow("هنوز دستگاهی متصل نشده است")
+ val events=MutableStateFlow<List<String>>(emptyList())
+ private fun randomKey():String {
+  val bytes=ByteArray(6);SecureRandom().nextBytes(bytes)
+  return bytes.joinToString("") { "%02X".format(it.toInt() and 255) }
+ }
+ fun reset() {key=randomKey();client.value="هنوز دستگاهی متصل نشده است";events.value=emptyList()}
+ fun log(event:String) {events.value=(listOf(event)+events.value).take(30)}
+}
+
 class LocalServer(private val context:Context, port:Int) {
- private val listener=ServerSocket(port)
- private val pool=Executors.newFixedThreadPool(4)
+ private val listener=ServerSocket()
+ private val pool=Executors.newFixedThreadPool(6)
  @Volatile private var open=true
+ init {
+  listener.reuseAddress=true
+  listener.bind(InetSocketAddress("0.0.0.0",port))
+ }
  fun start() {
   Thread {
    while(open) {
-    try { val socket=listener.accept(); pool.execute { socket.use { serve(it) } } }
-    catch(e:Exception) { if(!open) break }
+    try { val socket=listener.accept();pool.execute {socket.use {serve(it)}} }
+    catch(_:Exception) {if(!open) break}
    }
-  }.apply { isDaemon=true;start() }
+  }.apply {isDaemon=true;name="PolFile-server";start()}
  }
- fun close() { open=false;listener.close();pool.shutdownNow() }
- private fun headers(input:InputStream):String {
-  val buf=ByteArrayOutputStream();var state=0
-  while(buf.size()<32768) {
-   val b=input.read();if(b<0) throw EOFException()
-   buf.write(b)
-   state=when { state==0 && b==13 -> 1; state==1 && b==10 -> 2; state==2 && b==13 -> 3; state==3 && b==10 -> 4; b==13 -> 1; else -> 0 }
-   if(state==4) return buf.toString("ISO-8859-1")
+ fun close() {open=false;listener.close();pool.shutdownNow()}
+ private fun requestHead(input:InputStream):String {
+  val output=ByteArrayOutputStream();var state=0
+  while(output.size()<32768) {
+   val b=input.read();if(b<0) throw EOFException("Connection closed")
+   output.write(b)
+   state=when {state==0 && b==13->1;state==1 && b==10->2;state==2 && b==13->3;state==3 && b==10->4;b==13->1;else->0}
+   if(state==4)return output.toString("ISO-8859-1")
   }
-  throw IOException("Request headers too long")
+  throw IOException("Headers exceed 32KB")
  }
  private fun reply(out:OutputStream,code:Int,body:String,type:String="text/plain; charset=utf-8") {
-  val data=body.toByteArray(StandardCharsets.UTF_8)
-  val reason=when(code) {200->"OK";201->"Created";400->"Bad Request";404->"Not Found";413->"Payload Too Large";415->"Unsupported Media Type";else->"Error"}
-  out.write(("HTTP/1.1 "+code+" "+reason+"\r\nContent-Type: "+type+"\r\nContent-Length: "+data.size+"\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n").toByteArray(StandardCharsets.UTF_8))
-  out.write(data);out.flush()
+  val bytes=body.toByteArray(StandardCharsets.UTF_8)
+  val reason=when(code){200->"OK";201->"Created";400->"Bad Request";403->"Forbidden";404->"Not Found";413->"Payload Too Large";415->"Unsupported Media Type";else->"Internal Server Error"}
+  out.write(("HTTP/1.1 "+code+" "+reason+"\r\nContent-Type: "+type+"\r\nContent-Length: "+bytes.size+"\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\nReferrer-Policy: no-referrer\r\nConnection: close\r\n\r\n").toByteArray(StandardCharsets.UTF_8))
+  out.write(bytes);out.flush()
  }
- private fun escape(s:String)=s.replace("&","&amp;").replace("<","&lt;").replace(">","&gt;").replace("\"","&quot;").replace("'","&#39;")
- private fun home(out:OutputStream) {
-  val rows=FileStore.list(context).mapIndexed { index,file ->
-   "<li><span>"+escape(file.name)+"<small>"+(if(file.size>=0) file.size.toString()+" bytes" else "")+"</small></span><a href='/d/"+index+"'>دریافت</a></li>"
+ private fun html(s:String)=s.replace("&","&amp;").replace("<","&lt;").replace(">","&gt;").replace("\"","&quot;").replace("'","&#39;")
+ private fun fileId(uri:Uri):String=MessageDigest.getInstance("SHA-256").digest(uri.toString().toByteArray()).take(12).joinToString("") { "%02x".format(it.toInt() and 255) }
+ private fun page(out:OutputStream) {
+  val rows=FileStore.list(context).map {file ->
+   val title=if(file.path.isNotEmpty())file.path else file.name
+   val size=if(file.size>=0) file.size.toString()+" بایت" else "اندازه نامشخص"
+   "<div class='row' data-name='"+html(title)+"'><div class='name'><strong>"+html(title)+"</strong><div class='small'>"+html(size)+"</div></div><a class='btn' href='/d/"+fileId(file.uri)+"?key="+WebSession.key+"'>↓ دریافت</a></div>"
   }.joinToString("")
-  val html=context.assets.open("index.html").bufferedReader(Charsets.UTF_8).use { it.readText() }.replace("ROWS",rows)
-  reply(out,200,html,"text/html; charset=utf-8")
+  val template=context.assets.open("index.html").bufferedReader(StandardCharsets.UTF_8).use {it.readText()}
+  reply(out,200,template.replace("ROWS",rows).replace("TOKEN_JSON","'"+WebSession.key+"'"),"text/html; charset=utf-8")
  }
- private fun download(out:OutputStream,raw:String) {
-  val index=raw.toIntOrNull() ?: -1
-  val file=FileStore.list(context).getOrNull(index)
-  if(file==null) {reply(out,404,"File not found");return}
+ private fun download(out:OutputStream,id:String) {
+  val file=FileStore.list(context).firstOrNull {fileId(it.uri)==id}
+  if(file==null) {reply(out,404,"The file is not shared or its access has expired");return}
   val stream=context.contentResolver.openInputStream(file.uri)
-  if(stream==null) {reply(out,404,"File not accessible");return}
+  if(stream==null) {reply(out,404,"File is not readable");return}
   stream.use {
-   val filename=URLEncoder.encode(file.name,"UTF-8").replace("+","%20")
-   val line="HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Disposition: attachment; filename*=UTF-8''"+filename+"\r\n"
-   out.write((line+(if(file.size>=0) "Content-Length: "+file.size+"\r\n" else "")+"Cache-Control: no-store\r\nConnection: close\r\n\r\n").toByteArray(StandardCharsets.UTF_8))
-   it.copyTo(out,64*1024);out.flush()
+   val encoded=URLEncoder.encode(file.name,"UTF-8").replace("+","%20")
+   out.write(("HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Disposition: attachment; filename*=UTF-8''"+encoded+"\r\n"+
+     (if(file.size>=0)"Content-Length: "+file.size+"\r\n" else "")+
+     "Cache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\nReferrer-Policy: no-referrer\r\nConnection: close\r\n\r\n").toByteArray(StandardCharsets.UTF_8))
+   it.copyTo(out,64*1024)
+   out.flush()
+   WebSession.log("دریافت در کامپیوتر: "+file.name)
   }
  }
- private fun upload(path:String,headers:Map<String,String>,input:InputStream,out:OutputStream) {
-  if(headers["content-type"]?.substringBefore(";")?.trim()?.lowercase()!="application/octet-stream") {reply(out,415,"Unsupported upload type");return}
+ private fun upload(name:String,headers:Map<String,String>,input:InputStream,out:OutputStream) {
+  if(headers["content-type"]?.substringBefore(";")?.trim()?.lowercase()!="application/octet-stream") {
+   reply(out,415,"Only raw file uploads are supported");return
+  }
   val length=headers["content-length"]?.toLongOrNull()
-  if(length==null || length<0 || length>2147483647L) {reply(out,413,"Unsupported upload size (max 2 GB)");return}
-  val raw=path.substringAfter("name=","").substringBefore("&")
-  val name=URLDecoder.decode(raw,"UTF-8").replace('/','_').replace('\\','_').replace(Regex("[\u0000-\u001f\u007f]"),"_").trim().trim('.').take(120)
-  if(name.isBlank()){reply(out,400,"Invalid filename");return}
-  var uri:Uri?=null
+  if(length==null || length<0 || length>2147483647L) {reply(out,413,"Maximum upload: 2 GB per file");return}
+  val safe=name.replace('/','_').replace('\\','_').replace(Regex("[\u0000-\u001f\u007f]"),"_").trim().trim('.').take(120)
+  if(safe.isBlank()){reply(out,400,"Invalid filename");return}
+  var destination:Uri?=null
   try {
    if(Build.VERSION.SDK_INT>=29) {
-    val values=ContentValues().apply {
-     put(MediaStore.Downloads.DISPLAY_NAME,name)
+    val v=ContentValues().apply {
+     put(MediaStore.Downloads.DISPLAY_NAME,safe)
      put(MediaStore.Downloads.MIME_TYPE,"application/octet-stream")
      put(MediaStore.Downloads.RELATIVE_PATH,"Download/PolFile")
      put(MediaStore.Downloads.IS_PENDING,1)
     }
-    uri=context.contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI,values) ?: throw IOException("Cannot create file")
+    destination=context.contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI,v) ?: throw IOException("Cannot create file")
    } else {
     val folder=File(context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS),"PolFile")
-    folder.mkdirs(); uri=Uri.fromFile(File(folder,name))
+    if(!folder.exists()&&!folder.mkdirs())throw IOException("Cannot create folder")
+    destination=Uri.fromFile(File(folder,safe))
    }
-   val target=uri ?: throw IOException("No destination")
-   val destination=if(target.scheme=="file") FileOutputStream(File(target.path!!)) else context.contentResolver.openOutputStream(target,"w") ?: throw IOException("No output")
-   destination.use { stream ->
-    val buf=ByteArray(65536);var remaining=length
+   val target=destination ?: throw IOException("No target")
+   val output=if(target.scheme=="file") FileOutputStream(File(target.path!!)) else context.contentResolver.openOutputStream(target,"w") ?: throw IOException("Cannot open output")
+   output.use {stream ->
+    val buffer=ByteArray(65536);var remaining=length
     while(remaining>0) {
-     val n=input.read(buf,0,minOf(remaining,buf.size.toLong()).toInt())
-     if(n<0) throw EOFException("Incomplete upload")
-     stream.write(buf,0,n);remaining-=n
+     val n=input.read(buffer,0,minOf(remaining,buffer.size.toLong()).toInt())
+     if(n<0)throw EOFException("Incomplete upload")
+     stream.write(buffer,0,n);remaining-=n
     }
    }
-   if(Build.VERSION.SDK_INT>=29) context.contentResolver.update(target,ContentValues().apply {put(MediaStore.Downloads.IS_PENDING,0)},null,null)
+   if(Build.VERSION.SDK_INT>=29)context.contentResolver.update(target,ContentValues().apply {put(MediaStore.Downloads.IS_PENDING,0)},null,null)
    FileStore.add(context,listOf(target))
-   reply(out,201,"Uploaded")
-  } catch(e:Exception) {
-   uri?.let { if(it.scheme=="file") runCatching {File(it.path!!).delete()} else runCatching {context.contentResolver.delete(it,null,null)} }
-   reply(out,500,"Upload failed")
+   WebSession.log("ارسال از کامپیوتر: "+safe)
+   reply(out,201,"File saved in Download/PolFile")
+  } catch(_:Exception) {
+   destination?.let {uri-> if(uri.scheme=="file")runCatching {File(uri.path!!).delete()} else runCatching {context.contentResolver.delete(uri,null,null)}}
+   reply(out,500,"Cannot save this file on the phone")
   }
  }
  private fun serve(socket:Socket) {
-  socket.soTimeout=120000
   try {
+   socket.soTimeout=30000
    val input=BufferedInputStream(socket.getInputStream())
    val output=BufferedOutputStream(socket.getOutputStream())
-   val h=headers(input).split("\r\n")
-   val first=h.firstOrNull()?.split(" ") ?: return
-   if(first.size<2){reply(output,400,"Invalid request");return}
-   val map=h.drop(1).filter {it.contains(":")}.associate {it.substringBefore(":").lowercase().trim() to it.substringAfter(":").trim()}
-   val path=first[1].substringBefore("?")
+   val head=requestHead(input).split("\r\n")
+   val request=head.firstOrNull()?.split(" ") ?:return
+   if(request.size<2){reply(output,400,"Invalid request");return}
+   val url=request[1]
+   val path=url.substringBefore("?")
+   val query=url.substringAfter("?","").split("&").filter {it.contains("=")}
+    .associate {URLDecoder.decode(it.substringBefore("="),"UTF-8") to URLDecoder.decode(it.substringAfter("="),"UTF-8")}
+   if(query["key"]!=WebSession.key){reply(output,403,"Invalid connection code. Copy the COMPLETE address from the phone app.");return}
+   val headers=head.drop(1).filter {it.contains(":")}.associate {it.substringBefore(":").trim().lowercase() to it.substringAfter(":").trim()}
+   if(path!="/ping") WebSession.client.value=socket.inetAddress.hostAddress ?: "دستگاه متصل"
+   socket.soTimeout=900000
    when {
-    first[0]=="GET" && path=="/" -> home(output)
-    first[0]=="GET" && path.startsWith("/d/") -> download(output,path.removePrefix("/d/"))
-    first[0]=="POST" && path=="/upload" -> upload(first[1],map,input,output)
+    request[0]=="GET" && path=="/ping" -> reply(output,200,"OK")
+    request[0]=="GET" && path=="/" -> page(output)
+    request[0]=="GET" && path.startsWith("/d/") -> download(output,path.removePrefix("/d/"))
+    request[0]=="POST" && path=="/upload" -> upload(query["name"].orEmpty(),headers,input,output)
     else -> reply(output,404,"Not found")
    }
-  } catch(_:Exception) {}
+  }catch(_:Exception){}
  }
 }
