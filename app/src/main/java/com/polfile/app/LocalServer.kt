@@ -139,7 +139,16 @@ class LocalServer(private val context:Context, port:Int) {
    val path=url.substringBefore("?")
    val query=url.substringAfter("?","").split("&").filter {it.contains("=")}
     .associate {URLDecoder.decode(it.substringBefore("="),"UTF-8") to URLDecoder.decode(it.substringAfter("="),"UTF-8")}
-   if(query["key"]!=WebSession.key){reply(output,403,"Invalid connection code. Copy the COMPLETE address from the phone app.");return}
+   if(path=="/" && query["key"]!=WebSession.key) {
+    val landing="<!doctype html><html lang='fa' dir='rtl'><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'><title>پل فایل ـ اتصال</title>"+
+      "<style>body{font-family:Tahoma,Arial;background:#fff3f1;color:#293249;margin:0}header{background:linear-gradient(120deg,#ffa69c,#fb6d73);color:white;padding:35px;text-align:center}main{max-width:460px;margin:-18px auto 25px;padding:25px;background:white;border-radius:23px;box-shadow:0 10px 30px #a8515020;text-align:center}h1{font-size:35px;margin:0}p{font-size:13px;line-height:2;color:#748095}input{width:90%;padding:15px;border:1px solid #eedddd;border-radius:13px;font-size:19px;text-align:center;letter-spacing:2px;direction:ltr}button{margin-top:15px;background:#f66b70;color:white;border:0;border-radius:13px;padding:14px 30px;font-size:15px;cursor:pointer}</style>"+
+      "<header><h1>پل فایل</h1><div>گوشی و کامپیوتر، کنار هم</div></header><main><h2>اتصال به گوشی</h2><p>کد اتصال را از برنامه پل فایل در گوشی وارد کنید.<br>هر دو دستگاه باید به یک شبکه مشترک متصل باشند.</p>"+
+      "<form action='/' method='get'><input name='key' maxlength='12' autocomplete='off' placeholder='کد ۱۲ رقمی' required><br><button type='submit'>اتصال و مشاهده فایل‌ها</button></form>"+
+      "<p>بعد از اتصال، تب‌های «دریافت از گوشی» و «ارسال به گوشی» نمایش داده می‌شوند.</p></main></html>"
+    reply(output,200,landing,"text/html; charset=utf-8")
+    return
+   }
+   if(query["key"]!=WebSession.key){reply(output,403,"Invalid pairing code");return}
    val headers=head.drop(1).filter {it.contains(":")}.associate {it.substringBefore(":").trim().lowercase() to it.substringAfter(":").trim()}
    if(path!="/ping") WebSession.client.value=socket.inetAddress.hostAddress ?: "دستگاه متصل"
    socket.soTimeout=900000
